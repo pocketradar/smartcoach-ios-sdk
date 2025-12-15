@@ -1,0 +1,66 @@
+@Tutorial(time: 8) {
+    @Intro(title: "Configure the SmartCoach SDK") {
+        In this chapter, you will configure the SmartCoach SDK by:
+        
+        • Adding the API key  
+        • Adding required Bluetooth permissions  
+        • Initializing the SDK in your app's launch sequence  
+    }
+    
+    @Section(title: "Add the SmartCoach API Key") {
+        Add your API key to your application's Info.plist:
+        
+        ```xml
+        <key>SmartCoachAPIKey</key>
+        <string>YOUR_API_KEY</string>
+        ```
+        
+        @Steps {
+            @Step {
+                Open your app's Info.plist and add the required SmartCoachAPIKey entry.
+            }
+        }
+    }
+                
+    @Section(title: "Add Bluetooth Permissions") {
+            Insert the required usage description:
+            
+            ```xml
+            <key>NSBluetoothAlwaysUsageDescription</key>
+            <string>This app uses Bluetooth to connect to SmartCoach radar devices.</string>
+            ```
+                    
+        @Steps {
+            @Step {
+                Add the NSBluetoothAlwaysUsageDescription entry to your Info.plist.
+            }
+        }
+    }
+                
+    @Section(title: "Configure the SDK on Launch") {
+        Add the following AppDelegate code:
+        
+<!--        @CodeListing(language: "swift") {-->
+<!--            class AppDelegate: NSObject, UIApplicationDelegate {-->
+<!--            func application(-->
+<!--            _ application: UIApplication,-->
+<!--            didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil-->
+<!--            ) -> Bool {-->
+<!--            do {-->
+<!--            try SmartCoach.configure()-->
+<!--            } catch {-->
+<!--            print("Failed to configure SmartCoach: \\(error)")-->
+<!--            }-->
+<!--            return true-->
+<!--            }-->
+<!--            }-->
+<!--        }-->
+            
+        @Steps {
+            @Step {
+                Ensure SmartCoach.configure() is called once during launch.
+            }
+        }
+    }
+                
+}
