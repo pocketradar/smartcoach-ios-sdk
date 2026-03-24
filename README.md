@@ -176,13 +176,11 @@ The SDK includes comprehensive DocC documentation bundled directly in the packag
 
 ## Sample Project
 
-A complete sample app is available in the `SampleProject/` directory of this repository. To run it, clone the repo and open the Xcode project:
+A complete sample app demonstrating SDK integration is available in a separate repository:
 
-```bash
-git clone https://github.com/pocketradar/smartcoach-ios-sdk
-cd smartcoach-ios-sdk
-open SampleProject/iOSSmartCoachSDKSample.xcodeproj
-```
+**[SmartCoach iOS SDK Sample App](https://github.com/pocketradar/ios-smartcoach-sdk-sample)**
+
+The sample app shows best practices for device discovery, connection management, and streaming measurement data.
 
 ## Feedback & Reporting Issues
 
@@ -194,7 +192,7 @@ Your feedback during the beta is invaluable — please use [GitHub Issues](https
 - Expected vs actual behavior
 - Relevant logs or code snippets
 
-For urgent support, contact [info@pocketradar.com](mailto:info@pocketradar.com).
+For urgent support, contact [partners@pocketradar.com](mailto:partners@pocketradar.com).
 
 ## Partner Access
 
