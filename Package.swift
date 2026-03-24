@@ -19,7 +19,7 @@ let package = Package(
         .binaryTarget(
             name: "SmartCoachSDK",
             url: "https://github.com/your-org/SmartCoachSDK/releases/download/0.1.0-beta.3/SmartCoachSDK.xcframework.zip",
-            checksum: "paste-your-checksum-here"
+            checksum: "1e4ad848bf8bae8b9369d4064e0f71714a5150c15874e31324fcef05df4d05f3"
         ),
         
         // Documentation-only target
