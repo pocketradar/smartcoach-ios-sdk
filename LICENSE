@@ -1,0 +1,103 @@
+Pocket Radar SDK License
+Copyright (c) 2026 Pocket Radar, Inc.
+All rights reserved.
+
+This Pocket Radar Software Development Kit ("SDK") is proprietary software
+owned by Pocket Radar, Inc. ("Pocket Radar", "we", "us", or "our").
+
+By downloading, accessing, or using the SDK, you agree to the terms of this
+License Agreement. If you do not agree to these terms, you may not use the SDK.
+
+1. License Grant
+
+Pocket Radar grants a limited, non-exclusive, non-transferable, revocable
+license to use the SDK only to entities that have been explicitly authorized
+by Pocket Radar and issued a valid Pocket Radar API key.
+
+The SDK may only be used to develop applications that integrate with Pocket
+Radar hardware products.
+
+No rights are granted to use the SDK without such authorization.
+
+2. Not Open Source
+
+The SDK is not open source software.
+
+All rights not expressly granted in this Agreement are reserved by Pocket Radar.
+
+3. API Key Requirement
+
+Use of the SDK requires a valid Pocket Radar API key issued by Pocket Radar.
+
+Pocket Radar may issue, revoke, or modify API keys at its sole discretion.
+
+Use of the SDK without a valid API key or in violation of API key terms is
+strictly prohibited.
+
+4. Commercial Use
+
+Use of the SDK in production environments, publicly distributed software,
+commercial products, or consumer-facing applications requires a separate
+written commercial or partner agreement with Pocket Radar.
+
+5. Hardware Restriction
+
+The SDK may only be used in connection with authorized Pocket Radar hardware
+products.
+
+Use of the SDK with non-Pocket Radar hardware, simulated radar systems,
+or competing products is prohibited.
+
+6. Restrictions
+
+You may not:
+
+- Reverse engineer, decompile, or disassemble the SDK
+- Attempt to derive the source code of the SDK
+- Modify or create derivative works of the SDK
+- Redistribute, sublicense, sell, lease, or otherwise transfer the SDK
+- Remove or obscure any proprietary notices contained within the SDK
+
+Any use outside the scope of this Agreement is prohibited.
+
+7. Ownership
+
+The SDK and all intellectual property rights associated with it remain the
+exclusive property of Pocket Radar.
+
+This Agreement does not transfer ownership rights.
+
+8. Updates
+
+Pocket Radar may modify, update, or discontinue the SDK at any time without
+notice.
+
+9. Disclaimer of Warranties
+
+The SDK is provided "AS IS" without warranties of any kind, whether express or
+implied, including but not limited to merchantability, fitness for a particular
+purpose, and non-infringement.
+
+Pocket Radar does not guarantee that the SDK will be error-free or uninterrupted.
+
+10. Limitation of Liability
+
+To the maximum extent permitted by law, Pocket Radar shall not be liable for
+any indirect, incidental, special, consequential, or punitive damages arising
+from the use of or inability to use the SDK.
+
+11. Revocation
+
+Pocket Radar reserves the right to revoke SDK access or API keys at any time.
+
+Upon revocation, you must immediately cease use of the SDK and delete all copies.
+
+12. Governing Law
+
+This Agreement shall be governed by the laws of the State of California,
+without regard to conflict of law principles.
+
+13. Entire Agreement
+
+This Agreement governs use of the SDK unless a separate written commercial
+agreement has been executed between Pocket Radar and the authorized partner.

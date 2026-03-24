@@ -4,20 +4,29 @@
 import PackageDescription
 
 let package = Package(
-    name: "smartcoach-ios-sdk",
+    name: "SmartCoachSDK",
+    platforms: [
+        .iOS(.v18)
+    ],
     products: [
-        // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(
             name: "SmartCoachSDK",
-            targets: ["SmartCoachSDK"]
+            targets: ["SmartCoachSDK", "SmartCoachSDKDocumentation"]
         ),
     ],
     targets: [
-        // Targets are the basic building blocks of a package, defining a module or a test suite.
-        // Targets can depend on other targets in this package and products from dependencies.
-        .target(
+        // Binary target - fetched from GitHub Release asset
+        .binaryTarget(
             name: "SmartCoachSDK",
-            path: "Sources/SmartCoachSDK"
+            url: "https://github.com/your-org/SmartCoachSDK/releases/download/0.1.0-beta.3/SmartCoachSDK.xcframework.zip",
+            checksum: "paste-your-checksum-here"
+        ),
+        
+        // Documentation-only target
+        .target(
+            name: "SmartCoachSDKDocumentation",
+            path: "Sources/SmartCoachSDK",
+            sources: []
         ),
     ]
 )
