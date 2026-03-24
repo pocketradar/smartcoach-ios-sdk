@@ -25,9 +25,7 @@ let package = Package(
         // Documentation-only target
         .target(
             name: "SmartCoachSDKDocumentation",
-            path: "Sources/SmartCoachSDK",
-            sources: [],
-            publicHeadersPath: "."
+            path: "Sources/SmartCoachSDK"
         ),
     ]
 )
