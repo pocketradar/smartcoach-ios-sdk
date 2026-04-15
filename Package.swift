@@ -18,8 +18,8 @@ let package = Package(
         // Binary target - fetched from GitHub Release asset
         .binaryTarget(
             name: "SmartCoachSDK",
-            url: "https://github.com/pocketradar/smartcoach-ios-sdk/releases/download/v0.1.0-beta.5/SmartCoachSDK.xcframework.zip",
-            checksum: "c1478b2e4495b1218d733906e2510f05a821476519535e7ba8049ab6670e5420"
+            url: "https://github.com/pocketradar/smartcoach-ios-sdk/releases/download/v0.1.0-beta.6/SmartCoachSDK.xcframework.zip",
+            checksum: "7a940ac990dc5f48640ba0d5ba1209783be73861739526078f71fc8c20c7eae3"
         ),
         
         // Documentation-only target
