@@ -35,7 +35,7 @@ Typical integrations include:
 
 ## Requirements
 
-- Xcode 15.0 or later
+- Xcode 26.0 or later (the package manifest uses Swift tools 6.2)
 - iOS 18.0 or later
 
 ## Installation
@@ -97,62 +97,65 @@ struct MyApp: App {
 @MainActor
 @Observable
 class ScanningViewModel {
+    var sessionState: SmartCoachSessionState = SmartCoach.currentSessionState()
     var availableDevices: [any SmartCoachRadar] = []
     var errorMessage: String?
-    private var scanningObservationsTask: Task<Void, Never>?
-    var isScanning = false
+
+    /// Observes SDK session state for the lifetime of the calling task.
+    /// Drive this from the owning view's `.task` modifier — SwiftUI cancels the
+    /// task automatically when the view disappears, so no manual teardown is needed.
+    func startMonitoring() async {
+        do {
+            for await state in try await SmartCoach.sessionStateStream() {
+                sessionState = state
+                switch state {
+                case let .scanning(devices):
+                    availableDevices = devices
+                case let .disconnected(error):
+                    availableDevices.removeAll()
+                    // Keep observing — errors arrive as data on the stream.
+                    if let error {
+                        errorMessage = error.localizedDescription
+                    }
+                default:
+                    availableDevices.removeAll()
+                }
+            }
+        } catch SmartCoachError.notConfigured {
+            errorMessage = "Please configure the SDK"
+        } catch {
+            errorMessage = "An unexpected error occurred: \(error.localizedDescription)"
+        }
+    }
 
     func startScanning() {
-        guard !isScanning else { return }
-        resetScanning()
-        startScanningObservations()
+        guard sessionState.rootState != .scanning else { return }
         Task {
             do {
-                isScanning = true
-                try await SmartCoach.startScanning(connectToLastPairedDevice: false)
+                try await SmartCoach.startScanning()
             } catch {
-                self.errorMessage = "Failed to start scan: \(error.localizedDescription)"
+                errorMessage = "Failed to start scan: \(error.localizedDescription)"
             }
         }
     }
 
     func stopScanning() {
-        resetScanning()
-        isScanning = false
         Task {
             do {
                 try await SmartCoach.stopScanning()
             } catch {
-                self.errorMessage = "Failed to stop scan: \(error.localizedDescription)"
+                errorMessage = "Failed to stop scan: \(error.localizedDescription)"
             }
         }
-    }
-
-    private func startScanningObservations() {
-        resetScanning()
-        scanningObservationsTask = Task { @MainActor in
-            do {
-                for await state in try await SmartCoach.sessionStateStream() {
-                    try Task.checkCancellation()
-                    if case let .scanning(devices) = state {
-                        availableDevices = devices
-                    }
-                }
-            } catch SmartCoachError.notConfigured {
-                errorMessage = "Please configure the SDK"
-            } catch {
-                errorMessage = "An unexpected error occurred: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    private func resetScanning() {
-        scanningObservationsTask?.cancel()
-        scanningObservationsTask = nil
-        availableDevices.removeAll()
     }
 }
+
+// In your view — one modifier drives the observation:
+//
+//     .task { await viewModel.startMonitoring() }
 ```
+
+Devices are discovered, connected, and measured through the **session state stream** — SDK calls start work, and results arrive as states. See the bundled DocC tutorials for connecting and streaming measurements.
 
 ## Documentation
 
@@ -181,6 +184,39 @@ A complete sample app demonstrating SDK integration is available in a separate r
 **[SmartCoach iOS SDK Sample App](https://github.com/pocketradar/ios-smartcoach-sdk-sample)**
 
 The sample app shows best practices for device discovery, connection management, and streaming measurement data.
+
+## AI-Assisted Integration (Agent Skills)
+
+This repository ships task-scoped recipes that let an AI coding assistant integrate
+specific SDK capabilities into your app — "set up the SmartCoach SDK in this app,"
+"add device scanning to this view model," "build a screen that connects and streams
+speeds" — following the SDK's required call sequences instead of improvising them.
+
+**Supported today: Claude (Claude Code).** The underlying recipes
+([`agent-skills/recipes/`](agent-skills/recipes/)) are vendor-neutral markdown, so
+other assistants (Codex, Gemini, Cursor) can use them directly — point your agent at
+the relevant recipe file. Native packaging for those tools is planned.
+
+### Install (Claude Code)
+
+Clone this repository at the tag matching your SDK version and run the installer:
+
+```bash
+git clone --depth 1 --branch <release-tag> https://github.com/pocketradar/smartcoach-ios-sdk
+cd smartcoach-ios-sdk/agent-skills
+./install.sh                          # user-level: available in all your projects
+# or:
+./install.sh /path/to/your/app        # project-level: committed with one app
+```
+
+Then start a fresh Claude Code session in your project and ask naturally, e.g.
+*"Set up the SmartCoach SDK in this app"* or *"Add SmartCoach device scanning to
+DevicesViewModel."*
+
+> The recipes are version-locked to SDK behavior — use the same release tag as the
+> SDK version in your app, and re-run `install.sh` after updating the SDK.
+
+See [`agent-skills/README.md`](agent-skills/README.md) for details.
 
 ## Feedback & Reporting Issues
 

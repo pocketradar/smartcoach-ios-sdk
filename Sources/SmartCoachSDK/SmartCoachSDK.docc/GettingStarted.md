@@ -33,7 +33,7 @@ Add the required Bluetooth permissions to your `Info.plist`:
 <string>YOUR_API_KEY_HERE</string>
 ```
 
-Replace `YOUR_API_KEY_HERE` with your actual API key from the Smart Coach developer portal.
+Replace `YOUR_API_KEY_HERE` with your actual API key from the Smart Coach developer portal. The key is a UUID string (`8-4-4-4-12` hex, e.g. `123E4567-E89B-12D3-A456-426614174000`) — any other format fails at launch with `SmartCoachError.missingApiKey`.
 
 ### 3. Import the SDK
 

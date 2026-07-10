@@ -12,11 +12,12 @@ The SDK uses ``SmartCoachSessionState`` to represent different stages of operati
 
 | State | Description |
 |-------|-------------|
-| `disconnected` | No device is connected |
-| `scanning` | Actively scanning for devices |
+| `disconnected` | No device is connected (carries an optional error describing why) |
+| `scanning` | Actively scanning for devices (carries the discovered devices) |
 | `connecting` | Attempting to connect to a device |
 | `connected` | Device is connected and ready |
 | `measuring` | Actively receiving measurement data |
+| `reconnecting` | Auto-reconnect is re-establishing a lost connection |
 
 ## Observing State Changes
 
@@ -30,40 +31,29 @@ The primary way to observe state changes is through an AsyncStream:
 class SessionStateViewModel {
     var currentState: SmartCoachSessionState = SmartCoach.currentSessionState()
     var errorMessage: String?
-    private var sessionStateTask: Task<Void, Never>?
     
-    init() {
-        monitorSessionState()
-    }
-    
-    // Available in Swift 6.2
-    // Otherwise start startScanningObservations needs to be async and called from the view.task
-    isolated deinit {
-        sessionStateTask?.cancel()
-        sessionStateTask = nil
-    }
-    
-    private func monitorSessionState() {
-        sessionStateTask = Task { @MainActor in
-            do {
-                for await state in try await SmartCoach.sessionStateStream() {
-                    try Task.checkCancellation()
-                    currentState = state
-                    handleStateChange(state)
-                }
-            } catch SmartCoachError.notConfigured {
-                errorMessage = "Please configure the SDK"
-            } catch {
-                errorMessage = "An unexpected error occurred: \(error.localizedDescription)"
-                print(error.localizedDescription)
+    /// Observes SDK session state for the lifetime of the calling task.
+    /// Drive this from the owning view's `.task` modifier — SwiftUI cancels the
+    /// task automatically when the view disappears, so no stored task or manual
+    /// teardown is needed.
+    func startMonitoring() async {
+        do {
+            for await state in try await SmartCoach.sessionStateStream() {
+                currentState = state
+                handleStateChange(state)
             }
+        } catch SmartCoachError.notConfigured {
+            errorMessage = "Please configure the SDK"
+        } catch {
+            errorMessage = "An unexpected error occurred: \(error.localizedDescription)"
         }
     }
     
     private func handleStateChange(_ state: SmartCoachSessionState) {
         switch state {
-        case .disconnected:
-            print("Device disconnected")
+        case let .disconnected(error):
+            // Keep observing after errors — the stream carries them as data.
+            print("Device disconnected", error.map { "— \($0.localizedDescription)" } ?? "")
             
         case .scanning:
             print("Scanning for devices...")
@@ -79,8 +69,6 @@ class SessionStateViewModel {
             
         case .measuring:
             print("Receiving measurements")
-        @unknown default:
-            print("unknown state")
         }
     }
 }
@@ -120,8 +108,7 @@ struct DeviceStatusView: View {
             actionButton
         }
         .task {
-            // if you cannot support Swift 6.2 start observing here
-            await viewModel.observeSessionState()
+            await viewModel.startMonitoring()
         }
     }
     
@@ -131,7 +118,7 @@ struct DeviceStatusView: View {
         case .disconnected:
             Image(systemName: "circle")
                 .foregroundColor(.gray)
-        case .scanning, .connecting:
+        case .scanning, .connecting, .reconnecting:
             ProgressView()
         case .connected:
             Image(systemName: "checkmark.circle.fill")
@@ -154,6 +141,8 @@ struct DeviceStatusView: View {
             return Text("Connected")
         case .measuring:
             return Text("Measuring")
+        case .reconnecting:
+            return Text("Reconnecting...")
         }
     }
     
@@ -185,101 +174,6 @@ struct DeviceStatusView: View {
 }
 ```
 
-<!--### Automatic Reconnection-->
-<!---->
-<!--Implement auto-reconnect logic based on state changes:-->
-<!---->
-<!--```swift-->
-<!--class AutoReconnectManager: ObservableObject {-->
-<!--    private var reconnectAttempts = 0-->
-<!--    private let maxReconnectAttempts = 3-->
-<!--    -->
-<!--    func startMonitoring() async {-->
-<!--        let stateStream = try? await SmartCoach.sessionStateStream()-->
-<!--        -->
-<!--        guard let stream = stateStream else { return }-->
-<!--        -->
-<!--        for await state in stream {-->
-<!--            if case .disconnected = state {-->
-<!--                await handleDisconnection()-->
-<!--            }-->
-<!--        }-->
-<!--    }-->
-<!--    -->
-<!--    private func handleDisconnection() async {-->
-<!--        guard reconnectAttempts < maxReconnectAttempts else {-->
-<!--            print("Max reconnect attempts reached")-->
-<!--            return-->
-<!--        }-->
-<!--        -->
-<!--        reconnectAttempts += 1-->
-<!--        print("Attempting reconnect (\(reconnectAttempts)/\(maxReconnectAttempts))...")-->
-<!--        -->
-<!--        try? await Task.sleep(for: .seconds(2))-->
-<!--        -->
-<!--        do {-->
-<!--            try await SmartCoach.startScanning(connectToLastPairedDevice: true)-->
-<!--            reconnectAttempts = 0 // Reset on successful reconnect-->
-<!--        } catch {-->
-<!--            print("Reconnect failed: \(error)")-->
-<!--        }-->
-<!--    }-->
-<!--}-->
-<!--```-->
-<!---->
-<!--### Session Recording-->
-<!---->
-<!--Track session duration and events:-->
-<!---->
-<!--```swift-->
-<!--@MainActor-->
-<!--class SessionRecorder: ObservableObject {-->
-<!--    @Published var sessionDuration: TimeInterval = 0-->
-<!--    @Published var measurementStartTime: Date?-->
-<!--    -->
-<!--    private var timer: Timer?-->
-<!--    -->
-<!--    func startMonitoring() async {-->
-<!--        let stateStream = try? await SmartCoach.sessionStateStream()-->
-<!--        -->
-<!--        guard let stream = stateStream else { return }-->
-<!--        -->
-<!--        for await state in stream {-->
-<!--            handleStateForRecording(state)-->
-<!--        }-->
-<!--    }-->
-<!--    -->
-<!--    private func handleStateForRecording(_ state: SmartCoachSessionState) {-->
-<!--        switch state {-->
-<!--        case .measuring:-->
-<!--            startTimer()-->
-<!--            -->
-<!--        case .disconnected, .connected:-->
-<!--            stopTimer()-->
-<!--            -->
-<!--        default:-->
-<!--            break-->
-<!--        }-->
-<!--    }-->
-<!--    -->
-<!--    private func startTimer() {-->
-<!--        guard measurementStartTime == nil else { return }-->
-<!--        -->
-<!--        measurementStartTime = Date()-->
-<!--        timer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in-->
-<!--            guard let startTime = self?.measurementStartTime else { return }-->
-<!--            self?.sessionDuration = Date().timeIntervalSince(startTime)-->
-<!--        }-->
-<!--    }-->
-<!--    -->
-<!--    private func stopTimer() {-->
-<!--        timer?.invalidate()-->
-<!--        timer = nil-->
-<!--        measurementStartTime = nil-->
-<!--        sessionDuration = 0-->
-<!--    }-->
-<!--}-->
-<!--```-->
 
 ### State-Based Validation
 
@@ -287,20 +181,18 @@ Validate actions based on current state:
 
 ```swift
 class SmartCoachOperations {
+    // These mirror the SDK's own preconditions: operations called from the
+    // wrong state throw SmartCoachError.invalidSessionState.
     func canStartMeasuring() -> Bool {
-        let state = SmartCoach.currentSessionState()
-        return state == .connected
+        SmartCoach.currentSessionState().rootState == .connected
     }
     
     func canConnect() -> Bool {
-        let state = SmartCoach.currentSessionState()
-        return state == .disconnected
+        SmartCoach.currentSessionState().rootState == .disconnected
     }
     
     func performActionIfValid(_ action: () async throws -> Void) async {
-        let state = SmartCoach.currentSessionState()
-        
-        guard state != .measuring else {
+        guard SmartCoach.currentSessionState().rootState != .measuring else {
             print("Cannot perform action while measuring")
             return
         }
@@ -318,18 +210,26 @@ class SmartCoachOperations {
 
 ```
 disconnected
-    ↓ startScanning()
-scanning
+    ↓ startScanning()          — only valid from disconnected; otherwise
+scanning                         throws invalidSessionState
     ↓ connect(to:)
 connecting
-    ↓ [connection successful]
+    ↓ [handshake completes — asynchronous; connect(to:) returning
+       does not mean connected yet]
 connected
-    ↓ startMeasuring()
+    ↓ startMeasuring()         — only valid from connected
 measuring
     ↓ stopMeasuring()
 connected
     ↓ disconnect()
 disconnected
+
+(unexpected connection loss, with autoReconnect enabled)
+connected / measuring
+    ↓ [connection lost]
+reconnecting
+    ↓ [device found again]
+connected
 ```
 
 ## Best Practices
@@ -341,14 +241,14 @@ Set up state monitoring early in your app lifecycle:
 ```swift
 @main
 struct MyApp: App {
-    @StateObject private var stateMonitor = SessionStateViewModel()
+    @State private var stateMonitor = SessionStateViewModel()
     
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(stateMonitor)
+                .environment(stateMonitor)
                 .task {
-                    await stateMonitor.observeSessionState()
+                    await stateMonitor.startMonitoring()
                 }
         }
     }
@@ -367,6 +267,7 @@ func updateUI(for state: SmartCoachSessionState) {
     case .connecting: showConnectingUI()
     case .connected: showConnectedUI()
     case .measuring: showMeasuringUI()
+    case .reconnecting: showReconnectingUI()
     }
 }
 ```
@@ -377,11 +278,10 @@ Use state monitoring alongside error handling:
 
 ```swift
 for await state in stateStream {
-    if case .disconnected = state {
-        // Check if disconnect was expected or an error
-        if wasUnexpectedDisconnect {
-            handleError()
-        }
+    // .disconnected carries an optional error: nil means a normal,
+    // user-initiated disconnect; non-nil describes an unexpected drop.
+    if case let .disconnected(error) = state, let error {
+        handleError(error)
     }
 }
 ```

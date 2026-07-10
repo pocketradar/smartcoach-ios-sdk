@@ -19,6 +19,15 @@ do {
 }
 ```
 
+Discovered devices arrive on ``SmartCoach/sessionStateStream()`` as the
+`.scanning([SmartCoachRadar])` state — `startScanning` itself returns as soon as
+the scan begins.
+
+> Important: Scanning is only valid while disconnected. Calling `startScanning`
+> while a device is already connected or connecting throws
+> ``SmartCoachErrorCode/invalidSessionState`` — call ``SmartCoach/disconnect()``
+> first if you need to switch devices.
+
 ### Auto-Connect to Last Device
 
 If you want to automatically connect to the previously paired device:
@@ -45,22 +54,32 @@ do {
 }
 ```
 
-**Best Practice**: Always stop scanning once you've found and connected to a device to conserve battery.
+Calling `stopScanning()` when no scan is running is a harmless no-op, and it never
+affects an established connection.
+
+**Best Practice**: There is no need to stop scanning after connecting — the SDK
+stops the scan itself when a connection begins. Call `stopScanning()` when the user
+cancels device selection.
 
 ## Connecting to a Device
 
 Once you have a ``SmartCoachRadar`` device reference (typically from your device discovery UI), connect to it:
 
 ```swift
-let device: SmartCoachRadar = selectedDevice
+let device: any SmartCoachRadar = selectedDevice
 
 do {
     try await SmartCoach.connect(to: device)
-    print("Connected to \(device.name)")
+    print("Connecting to \(device.id)…")
 } catch {
     print("Connection failed: \(error)")
 }
 ```
+
+> Important: `connect(to:)` returning does **not** mean the device is ready — the
+> encryption handshake completes asynchronously. The session reaches
+> `.connected` on ``SmartCoach/sessionStateStream()`` once the device is actually
+> ready; wait for that state before calling ``SmartCoach/startMeasuring()``.
 
 ## Disconnecting
 
@@ -135,7 +154,6 @@ class ScanningViewModel {
         scanningObservationsTask = Task { @MainActor in
             do {
                 for await state in try await SmartCoach.sessionStateStream() {
-                    try Task.checkCancellation()
                     if case let .scanning(devices) = state {
                         availableDevices = devices
                     }
@@ -224,8 +242,8 @@ let stateStream = try await SmartCoach.sessionStateStream()
 
 for await state in stateStream {
     switch state {
-    case .disconnected:
-        print("Device disconnected")
+    case let .disconnected(error):
+        print("Device disconnected", error.map { "— \($0.localizedDescription)" } ?? "")
         
     case .scanning:
         print("Scanning for devices")
@@ -238,6 +256,9 @@ for await state in stateStream {
         
     case .measuring:
         print("Receiving measurements")
+        
+    case .reconnecting:
+        print("Reconnecting to device")
     }
 }
 ```
@@ -270,6 +291,16 @@ catch SmartCoachError.failedToStartScanning {
 catch SmartCoachError.failedToConnect {
     // Device connection failed
     // Device may be out of range or already connected to another device
+}
+```
+
+### Invalid Session State
+
+```swift
+catch SmartCoachError.invalidSessionState {
+    // The operation isn't valid right now — e.g. scanning or connecting
+    // while a device is already connected/connecting.
+    // Disconnect first, or check SmartCoach.currentSessionState().
 }
 ```
 
@@ -370,7 +401,7 @@ for await state in stateStream {
 
 ## See Also
 
-- ``SmartCoach/startScanning(connectToLastPairedDevice:)``
+- ``SmartCoach/startScanning(timeout:connectToLastPairedDevice:)``
 - ``SmartCoach/stopScanning()``
 - ``SmartCoach/connect(to:)``
 - ``SmartCoach/disconnect()``

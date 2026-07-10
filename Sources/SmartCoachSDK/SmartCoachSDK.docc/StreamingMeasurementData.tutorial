@@ -1,19 +1,19 @@
 @Tutorial(time: 20) {
     @Intro(title: "Streaming Measurement Data") {
         Learn how to receive and display real-time measurement data from your connected SmartCoach device.
-        
+
         This tutorial shows you how to start measurements, process the data stream, and build a live display.
     }
-    
+
     @Section(title: "Set Up Measurement View") {
         @ContentAndMedia {
             Create a view that will display real-time measurements from your SmartCoach device.
         }
-        
+
         @Steps {
             @Step {
                 Create a new SwiftUI view for displaying measurements.
-                
+
                 @Code(name: "MeasurementView.swift", file: tutorial-02-01.swift) {
                 ```swift
                 import SwiftUI
@@ -27,10 +27,10 @@
                 ```
                 }
             }
-            
+
             @Step {
                 Create a view model to manage the measurement stream and data.
-                
+
                 @Code(name: "MeasurementView.swift", file: tutorial-02-02.swift) {
                 ```swift
                 import SwiftUI
@@ -41,13 +41,13 @@
                     @Published var measurements: [MeasurementData] = []
                     @Published var isMeasuring = false
                     @Published var statusMessage = "Ready to measure"
-                    
+
                     private var measurementTask: Task<Void, Never>?
                 }
 
                 struct MeasurementView: View {
                     @StateObject private var viewModel = MeasurementViewModel()
-                    
+
                     var body: some View {
                         VStack {
                             Text(viewModel.statusMessage)
@@ -59,77 +59,88 @@
             }
         }
     }
-    
+
     @Section(title: "Start Measurement Stream") {
         @ContentAndMedia {
             Implement the logic to start receiving measurements from the device.
+
+            Measuring requires an established connection: the session must have reached the
+            `.connected` state on ``SmartCoach/sessionStateStream()`` (see
+            <doc:ConnectingYourFirstDevice>). Calling ``SmartCoach/startMeasuring()`` in any
+            other state throws `SmartCoachError.invalidSessionState`.
         }
-        
+
         @Steps {
             @Step {
-                Add a method to start the measurement stream.
-                
+                Add a method to start the measurement stream. Guard on the session state, and
+                mark the UI as measuring only after the stream is successfully created.
+
                 @Code(name: "MeasurementView.swift", file: tutorial-02-03.swift) {
                 ```swift
                 func startMeasuring() async {
-                    isMeasuring = true
-                    statusMessage = "Starting measurements..."
-                    
+                    // The session must be .connected — not merely "connect was called."
+                    guard SmartCoach.currentSessionState().rootState == .connected else {
+                        statusMessage = "Connect to a device first"
+                        return
+                    }
+
                     do {
                         let stream = try await SmartCoach.startMeasuring()
+                        isMeasuring = true
                         statusMessage = "Measuring..."
-                        
-                        await processMeasurements(stream)
-                        
-                    } catch SmartCoachError.noDeviceConnected {
-                        statusMessage = "No device connected"
-                        isMeasuring = false
-                    } catch SmartCoachError.failedToStartMeasuring {
-                        statusMessage = "Failed to start measuring"
-                        isMeasuring = false
+
+                        processMeasurements(stream)
+
+                    } catch SmartCoachError.invalidSessionState {
+                        statusMessage = "Connect to a device first"
+                    } catch SmartCoachError.featureNotAvailable {
+                        statusMessage = "Measuring isn't included in your plan"
                     } catch {
                         statusMessage = "Error: \(error.localizedDescription)"
-                        isMeasuring = false
                     }
                 }
                 ```
                 }
             }
-            
+
             @Step {
-                Add a method to process the measurement stream.
-                
+                Add a method to process the measurement stream. The stream **completes** when
+                measuring stops, the device disconnects, or the connection is lost — so reset
+                the UI when the loop ends.
+
                 @Code(name: "MeasurementView.swift", file: tutorial-02-04.swift) {
                 ```swift
-                private func processMeasurements(_ stream: AsyncStream<MeasurementData>) async {
+                private func processMeasurements(_ stream: AsyncStream<MeasurementData>) {
                     measurementTask = Task {
                         for await measurement in stream {
                             measurements.append(measurement)
-                            
+
                             // Keep only last 100 measurements
                             if measurements.count > 100 {
                                 measurements.removeFirst()
                             }
                         }
+
+                        // The stream ended — measuring stopped or the device disconnected.
+                        isMeasuring = false
+                        statusMessage = "Ready to measure"
                     }
                 }
                 ```
                 }
             }
-            
+
             @Step {
-                Add a method to stop measuring.
-                
+                Add a method to stop measuring. You don't need to cancel the task —
+                ``SmartCoach/stopMeasuring()`` completes the stream, which ends the loop and
+                resets the UI.
+
                 @Code(name: "MeasurementView.swift", file: tutorial-02-05.swift) {
                 ```swift
                 func stopMeasuring() async {
-                    measurementTask?.cancel()
-                    measurementTask = nil
-                    
                     do {
+                        // Safe no-op if not currently measuring.
                         try await SmartCoach.stopMeasuring()
-                        isMeasuring = false
-                        statusMessage = "Stopped measuring"
                     } catch {
                         statusMessage = "Error stopping: \(error.localizedDescription)"
                     }
@@ -139,26 +150,30 @@
             }
         }
     }
-    
+
     @Section(title: "Display Measurements") {
         @ContentAndMedia {
             Build a user interface to visualize the real-time measurement data.
+
+            Each ``MeasurementData`` carries the speed as a `Measurement<UnitSpeed>` (easily
+            converted between mph, km/h, and m/s) plus the optional MAC address of the device
+            that produced it.
         }
-        
+
         @Steps {
             @Step {
                 Add control buttons to start and stop measuring.
-                
+
                 @Code(name: "MeasurementView.swift", file: tutorial-02-06.swift) {
                 ```swift
                 struct MeasurementView: View {
                     @StateObject private var viewModel = MeasurementViewModel()
-                    
+
                     var body: some View {
                         VStack(spacing: 20) {
                             Text(viewModel.statusMessage)
                                 .font(.headline)
-                            
+
                             if viewModel.isMeasuring {
                                 Button("Stop Measuring") {
                                     Task {
@@ -181,39 +196,42 @@
                 ```
                 }
             }
-            
+
             @Step {
-                Add a list to display the latest measurements.
-                
+                Add a list showing the latest speed readings.
+
                 @Code(name: "MeasurementView.swift", file: tutorial-02-07.swift) {
                 ```swift
                 struct MeasurementView: View {
                     @StateObject private var viewModel = MeasurementViewModel()
-                    
+
                     var body: some View {
                         VStack(spacing: 20) {
                             Text(viewModel.statusMessage)
                                 .font(.headline)
-                            
+
                             // Measurement count
                             if !viewModel.measurements.isEmpty {
                                 Text("\(viewModel.measurements.count) measurements")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
-                            
-                            // Latest measurements list
-                            List(viewModel.measurements.suffix(10).reversed(), id: \.timestamp) { measurement in
+
+                            // Latest measurements list (newest first)
+                            List(Array(viewModel.measurements.suffix(10).reversed().enumerated()),
+                                 id: \.offset) { _, data in
                                 VStack(alignment: .leading) {
-                                    Text("Measurement")
+                                    Text(data.measurement.formatted())
                                         .font(.headline)
-                                    Text(measurement.timestamp, style: .time)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                    if let mac = data.macAddress {
+                                        Text(mac)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                             }
                             .frame(height: 300)
-                            
+
                             // Control button
                             if viewModel.isMeasuring {
                                 Button("Stop Measuring") {
@@ -237,15 +255,15 @@
                 ```
                 }
             }
-            
+
             @Step {
                 Add a live indicator to show measurements are actively streaming.
-                
+
                 @Code(name: "MeasurementView.swift", file: tutorial-02-08.swift) {
                 ```swift
                 struct MeasurementView: View {
                     @StateObject private var viewModel = MeasurementViewModel()
-                    
+
                     var body: some View {
                         VStack(spacing: 20) {
                             // Live indicator
@@ -258,33 +276,36 @@
                                         .font(.caption)
                                         .fontWeight(.bold)
                                 }
-                                
+
                                 Spacer()
-                                
+
                                 Text(viewModel.statusMessage)
                                     .font(.headline)
                             }
                             .padding(.horizontal)
-                            
+
                             // Measurement count
                             if !viewModel.measurements.isEmpty {
                                 Text("\(viewModel.measurements.count) measurements received")
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                             }
-                            
-                            // Latest measurements
-                            List(viewModel.measurements.suffix(10).reversed(), id: \.timestamp) { measurement in
+
+                            // Latest measurements (newest first)
+                            List(Array(viewModel.measurements.suffix(10).reversed().enumerated()),
+                                 id: \.offset) { _, data in
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Measurement Data")
+                                    Text(data.measurement.formatted())
                                         .font(.headline)
-                                    Text(measurement.timestamp, style: .time)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
+                                    if let mac = data.macAddress {
+                                        Text(mac)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
                                 }
                             }
                             .frame(height: 300)
-                            
+
                             // Control button
                             if viewModel.isMeasuring {
                                 Button("Stop Measuring") {
@@ -310,16 +331,17 @@
             }
         }
     }
-    
+
     @Section(title: "Handle Cleanup") {
         @ContentAndMedia {
             Properly clean up resources when your view disappears.
         }
-        
+
         @Steps {
             @Step {
-                Add cleanup logic to stop measuring when the view disappears.
-                
+                Add cleanup logic to stop measuring when the view disappears. Cancel the task in
+                an explicit method — never in `deinit`, which cannot access main-actor state.
+
                 @Code(name: "MeasurementView.swift", file: tutorial-02-09.swift) {
                 ```swift
                 @MainActor
@@ -327,43 +349,51 @@
                     @Published var measurements: [MeasurementData] = []
                     @Published var isMeasuring = false
                     @Published var statusMessage = "Ready to measure"
-                    
+
                     private var measurementTask: Task<Void, Never>?
-                    
+
                     func cleanup() async {
+                        measurementTask?.cancel()
+                        measurementTask = nil
                         if isMeasuring {
                             await stopMeasuring()
                         }
                     }
-                    
+
                     // ... rest of the implementation
                 }
 
                 struct MeasurementView: View {
                     @StateObject private var viewModel = MeasurementViewModel()
-                    
+
                     var body: some View {
-                        // ... view code
+                        content
+                            .onDisappear {
+                                Task {
+                                    await viewModel.cleanup()
+                                }
+                            }
                     }
-                    .onDisappear {
-                        Task {
-                            await viewModel.cleanup()
-                        }
+
+                    private var content: some View {
+                        // ... view code from the previous steps
                     }
                 }
                 ```
                 }
             }
-            
+
             @Step {
-                Build and run your app. Connect to a device, then tap "Start Measuring".
-                
-                You should see measurements streaming in real-time with a live indicator.
+                Build and run your app on a physical device. Connect to a device, wait for the
+                connected state, then tap "Start Measuring".
+
+                You should see speed readings streaming in real-time with a live indicator.
             }
-            
+
             @Step {
-                Watch the measurement list update as new data arrives.
-                
+                Watch the measurement list update as new data arrives — and note that if the
+                device disconnects, the stream completes and the UI resets on its own.
+
                 Congratulations! You've successfully built a real-time measurement display. You can now process and visualize SmartCoach device data in your app.
             }
         }

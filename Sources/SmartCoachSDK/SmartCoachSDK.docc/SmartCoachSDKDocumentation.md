@@ -42,6 +42,7 @@ SmartCoachSDK provides a simple yet powerful interface to connect, communicate, 
 ### Device Management
 
 - ``SmartCoachRadar``
+- ``AnySmartCoachRadar``
 - <doc:DeviceDiscovery>
 - <doc:ConnectionManagement>
 
