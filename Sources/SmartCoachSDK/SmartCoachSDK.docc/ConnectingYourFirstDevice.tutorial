@@ -1,19 +1,19 @@
 @Tutorial(time: 15) {
     @Intro(title: "Connecting Your First Device") {
         Learn how to scan for, discover, and connect to a SmartCoach radar device in just a few minutes.
-        
+
         This tutorial walks you through building a simple device connection interface from scratch.
     }
-    
+
     @Section(title: "Set Up Your Project") {
         @ContentAndMedia {
             Before connecting to devices, you need to configure the SmartCoach SDK and set up your user interface.
         }
-        
+
         @Steps {
             @Step {
                 Create a new SwiftUI view for device discovery. Import the SmartCoachSDK framework.
-                
+
                 @Code(name: "DeviceConnectionView.swift", file: tutorial-01-01.swift) {
                 ```swift
                 import SwiftUI
@@ -27,10 +27,10 @@
                 ```
                 }
             }
-            
+
             @Step {
                 Create a view model to manage device discovery and connection state.
-                
+
                 @Code(name: "DeviceConnectionView.swift", file: tutorial-01-02.swift) {
                 ```swift
                 import SwiftUI
@@ -41,11 +41,12 @@
                     @Published var isScanning = false
                     @Published var isConnected = false
                     @Published var statusMessage = "Ready to scan"
+                    @Published var availableDevices: [AnySmartCoachRadar] = []
                 }
 
                 struct DeviceConnectionView: View {
                     @StateObject private var viewModel = DeviceConnectionViewModel()
-                    
+
                     var body: some View {
                         Text(viewModel.statusMessage)
                     }
@@ -53,10 +54,10 @@
                 ```
                 }
             }
-            
+
             @Step {
                 Configure the SDK when your app launches. Add this to your App struct.
-                
+
                 @Code(name: "MyApp.swift", file: tutorial-01-03.swift) {
                 ```swift
                 import SwiftUI
@@ -72,7 +73,7 @@
                             print("Configuration failed: \(error)")
                         }
                     }
-                    
+
                     var body: some Scene {
                         WindowGroup {
                             DeviceConnectionView()
@@ -84,16 +85,20 @@
             }
         }
     }
-    
-    @Section(title: "Implement Device Scanning") {
+
+    @Section(title: "Observe the Session State") {
         @ContentAndMedia {
-            Add the ability to scan for nearby SmartCoach devices and display them to the user.
+            Everything the SDK does — discovering devices, connecting, disconnecting — is reported
+            through one stream of session states. Your app observes the stream and reacts; SDK
+            calls only *start* work, they don't return results.
         }
-        
+
         @Steps {
             @Step {
-                Add a method to start scanning for devices.
-                
+                Add a monitoring method that observes ``SmartCoach/sessionStateStream()`` and
+                derives all UI state from it. Discovered devices arrive in the `.scanning` state,
+                and the session is ready only when the stream reports `.connected`.
+
                 @Code(name: "DeviceConnectionView.swift", file: tutorial-01-04.swift) {
                 ```swift
                 @MainActor
@@ -101,38 +106,105 @@
                     @Published var isScanning = false
                     @Published var isConnected = false
                     @Published var statusMessage = "Ready to scan"
-                    
-                    func startScanning() async {
-                        isScanning = true
-                        statusMessage = "Scanning for devices..."
-                        
+                    @Published var availableDevices: [AnySmartCoachRadar] = []
+
+                    /// Observes SDK session state for the lifetime of the calling task.
+                    /// Drive this from the view's `.task` modifier.
+                    func startMonitoring() async {
                         do {
-                            try await SmartCoach.startScanning()
+                            for await state in try await SmartCoach.sessionStateStream() {
+                                switch state {
+                                case let .scanning(devices):
+                                    isScanning = true
+                                    isConnected = false
+                                    availableDevices = devices.map(AnySmartCoachRadar.init)
+                                    statusMessage = "Scanning — found \(devices.count) device(s)"
+
+                                case .connecting, .reconnecting:
+                                    isScanning = false
+                                    statusMessage = "Connecting..."
+
+                                case .connected:
+                                    isScanning = false
+                                    isConnected = true
+                                    availableDevices = []
+                                    statusMessage = "Connected successfully!"
+
+                                case .measuring:
+                                    isConnected = true
+                                    statusMessage = "Measuring"
+
+                                case let .disconnected(error):
+                                    isScanning = false
+                                    isConnected = false
+                                    availableDevices = []
+                                    // Keep observing — errors arrive as data on the stream.
+                                    statusMessage = error.map { "Disconnected: \($0.localizedDescription)" } ?? "Ready to scan"
+                                }
+                            }
+                        } catch SmartCoachError.notConfigured {
+                            statusMessage = "Please configure the SDK first"
                         } catch {
-                            statusMessage = "Scan failed: \(error.localizedDescription)"
-                            isScanning = false
+                            statusMessage = "Error: \(error.localizedDescription)"
                         }
                     }
                 }
                 ```
                 }
             }
-            
+        }
+    }
+
+    @Section(title: "Implement Device Scanning") {
+        @ContentAndMedia {
+            Add the ability to scan for nearby SmartCoach devices and display them to the user.
+        }
+
+        @Steps {
             @Step {
-                Add a button to trigger the scan in your view.
-                
+                Add a method to start scanning. Note it only *starts* the scan — the devices
+                themselves arrive through the `.scanning` state you're already observing.
+
                 @Code(name: "DeviceConnectionView.swift", file: tutorial-01-05.swift) {
+                ```swift
+                func startScanning() async {
+                    do {
+                        try await SmartCoach.startScanning()
+                    } catch SmartCoachError.invalidSessionState {
+                        statusMessage = "Already connected — disconnect first"
+                    } catch {
+                        statusMessage = "Scan failed: \(error.localizedDescription)"
+                    }
+                }
+                ```
+                }
+            }
+
+            @Step {
+                Drive the monitoring from your view with `.task`, and show the discovered devices.
+                SwiftUI cancels the monitoring task automatically when the view disappears.
+
+                @Code(name: "DeviceConnectionView.swift", file: tutorial-01-06.swift) {
                 ```swift
                 struct DeviceConnectionView: View {
                     @StateObject private var viewModel = DeviceConnectionViewModel()
-                    
+
                     var body: some View {
                         VStack(spacing: 20) {
                             Text(viewModel.statusMessage)
                                 .font(.headline)
-                            
+
                             if viewModel.isScanning {
                                 ProgressView()
+
+                                List(viewModel.availableDevices) { device in
+                                    HStack {
+                                        Text(device.id)
+                                        Spacer()
+                                        Text("RSSI \(device.rssi)")
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
                             } else if !viewModel.isConnected {
                                 Button("Start Scanning") {
                                     Task {
@@ -143,6 +215,9 @@
                             }
                         }
                         .padding()
+                        .task {
+                            await viewModel.startMonitoring()
+                        }
                     }
                 }
                 ```
@@ -150,29 +225,39 @@
             }
         }
     }
-    
+
     @Section(title: "Connect to a Device") {
         @ContentAndMedia {
-            Implement the connection logic to establish a link with the discovered device.
+            Implement the connection logic to establish a link with a discovered device.
         }
-        
+
         @Steps {
             @Step {
-                Add a quick-connect method that automatically connects to the last paired device.
-                
-                @Code(name: "DeviceConnectionView.swift", file: tutorial-01-06.swift) {
+                Add connection methods. `connect(to:)` and auto-connect scanning only *begin*
+                connecting — the session is ready when your monitoring loop sees `.connected`,
+                which is also where the status message updates.
+
+                @Code(name: "DeviceConnectionView.swift", file: tutorial-01-07.swift) {
                 ```swift
-                func quickConnect() async {
-                    statusMessage = "Connecting to last device..."
-                    
+                func connect(to device: AnySmartCoachRadar) async {
                     do {
-                        try await SmartCoach.startScanning(connectToLastPairedDevice: true)
-                        isConnected = true
-                        statusMessage = "Connected successfully!"
+                        try await SmartCoach.connect(to: device)
+                        // Not connected yet! The encryption handshake finishes
+                        // asynchronously — startMonitoring() reports .connected.
                     } catch SmartCoachError.bluetoothNotAvailable {
                         statusMessage = "Please enable Bluetooth"
-                    } catch SmartCoachError.failedToConnect {
-                        statusMessage = "Connection failed. Try manual scan."
+                    } catch {
+                        statusMessage = "Connection failed: \(error.localizedDescription)"
+                    }
+                }
+
+                func quickConnect() async {
+                    do {
+                        // Scans and connects automatically to the last paired device.
+                        // Success is reported by the state stream as .connected.
+                        try await SmartCoach.startScanning(connectToLastPairedDevice: true)
+                    } catch SmartCoachError.bluetoothNotAvailable {
+                        statusMessage = "Please enable Bluetooth"
                     } catch {
                         statusMessage = "Error: \(error.localizedDescription)"
                     }
@@ -180,42 +265,54 @@
                 ```
                 }
             }
-            
+
             @Step {
-                Add a disconnect method for when the user wants to disconnect.
-                
-                @Code(name: "DeviceConnectionView.swift", file: tutorial-01-07.swift) {
+                Add a disconnect method for when the user wants to disconnect. `disconnect()`
+                never throws — the resulting state change arrives on the stream.
+
+                @Code(name: "DeviceConnectionView.swift", file: tutorial-01-08.swift) {
                 ```swift
                 func disconnect() async {
                     await SmartCoach.disconnect()
-                    isConnected = false
-                    statusMessage = "Disconnected"
+                    // startMonitoring() receives .disconnected and updates the UI.
                 }
                 ```
                 }
             }
-            
+
             @Step {
-                Update your view to show connection status and controls.
-                
-                @Code(name: "DeviceConnectionView.swift", file: tutorial-01-08.swift) {
+                Update your view to show connection status and controls, with a Connect button
+                per discovered device.
+
+                @Code(name: "DeviceConnectionView.swift", file: tutorial-01-09.swift) {
                 ```swift
                 struct DeviceConnectionView: View {
                     @StateObject private var viewModel = DeviceConnectionViewModel()
-                    
+
                     var body: some View {
                         VStack(spacing: 20) {
                             // Status indicator
                             Image(systemName: viewModel.isConnected ? "checkmark.circle.fill" : "circle")
                                 .font(.system(size: 60))
                                 .foregroundColor(viewModel.isConnected ? .green : .gray)
-                            
+
                             Text(viewModel.statusMessage)
                                 .font(.headline)
                                 .multilineTextAlignment(.center)
-                            
+
                             if viewModel.isScanning {
-                                ProgressView()
+                                List(viewModel.availableDevices) { device in
+                                    HStack {
+                                        Text(device.id)
+                                        Spacer()
+                                        Button("Connect") {
+                                            Task {
+                                                await viewModel.connect(to: device)
+                                            }
+                                        }
+                                        .buttonStyle(.bordered)
+                                    }
+                                }
                             } else if viewModel.isConnected {
                                 Button("Disconnect") {
                                     Task {
@@ -231,7 +328,7 @@
                                         }
                                     }
                                     .buttonStyle(.borderedProminent)
-                                    
+
                                     Button("Scan for Devices") {
                                         Task {
                                             await viewModel.startScanning()
@@ -242,6 +339,9 @@
                             }
                         }
                         .padding()
+                        .task {
+                            await viewModel.startMonitoring()
+                        }
                     }
                 }
                 ```
@@ -249,29 +349,34 @@
             }
         }
     }
-    
+
     @Section(title: "Test Your Connection") {
         @ContentAndMedia {
             Run your app and test connecting to a SmartCoach device.
         }
-        
+
         @Steps {
             @Step {
-                Build and run your app. Make sure Bluetooth is enabled on your device.
-                
+                Build and run your app on a physical device (Bluetooth is unavailable in the
+                Simulator). Make sure Bluetooth is enabled.
+
                 You should see the device connection interface with options to scan or quick-connect.
             }
-            
+
             @Step {
-                Tap "Quick Connect" if you've connected before, or "Scan for Devices" to discover new devices.
-                
-                Watch the status message update as the SDK searches for and connects to devices.
+                Tap "Quick Connect" if you've connected before, or "Scan for Devices" to discover
+                new devices and tap "Connect" next to one.
+
+                Watch the status message update as the session state stream reports scanning,
+                connecting, and connected states.
             }
-            
+
             @Step {
-                Once connected, you'll see a green checkmark and "Connected successfully!" message.
-                
-                Congratulations! You've successfully connected to a SmartCoach device. You're now ready to start receiving measurement data.
+                Once the stream reports `.connected`, you'll see a green checkmark and
+                "Connected successfully!".
+
+                Congratulations! You've successfully connected to a SmartCoach device. You're now
+                ready to start receiving measurement data.
             }
         }
     }

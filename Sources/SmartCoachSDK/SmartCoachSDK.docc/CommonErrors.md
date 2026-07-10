@@ -139,14 +139,17 @@ func connectWithRetry() async {
 
 **Error Code**: `4003` (``SmartCoachErrorCode/noDeviceConnected``)
 
-**Cause**: Attempting to start measurements without an active device connection.
+**Cause**: An operation required a connected device and none was available.
+
+> Note: Calling ``SmartCoach/startMeasuring()`` while not connected throws
+> ``SmartCoachErrorCode/invalidSessionState`` (4008) — see that entry below.
 
 **Solution**:
 ```swift
 // Check connection state before measuring
 let state = SmartCoach.currentSessionState()
 
-if state == .connected {
+if state.rootState == .connected {
     try await SmartCoach.startMeasuring()
 } else {
     // Connect first
@@ -162,22 +165,33 @@ if state == .connected {
 
 **Cause**: Device disconnected unexpectedly - may be due to distance, battery, or interference.
 
-**Solution**: Implement auto-reconnect:
+**Solution**: Enable auto-reconnect in configuration — the SDK then handles
+unexpected disconnects itself and surfaces `.reconnecting(device)` on the state
+stream while it works:
+
+```swift
+let options = SmartCoachDeviceConfigurationOptions(autoReconnect: true)
+try SmartCoach.configure(deviceConfigurationOptions: options)
+```
+
+If auto-reconnect is disabled and you reconnect manually, only do it from a
+disconnected state (note `.disconnected` carries an optional error describing why
+the connection dropped):
+
 ```swift
 for await state in sessionStateStream {
-    if case .disconnected = state {
-        // Attempt to reconnect
+    if case let .disconnected(error) = state, error != nil {
+        // Unexpected drop — attempt to reconnect
         try? await Task.sleep(for: .seconds(2))
         try? await SmartCoach.startScanning(connectToLastPairedDevice: true)
     }
 }
 ```
 
-Or enable auto-reconnect in configuration:
-```swift
-let options = SmartCoachDeviceConfigurationOptions(autoReconnect: true)
-try SmartCoach.configure(deviceConfigurationOptions: options)
-```
+> Important: Do not also scan manually while auto-reconnect is enabled — the SDK
+> is already reconnecting, and ``SmartCoach/startScanning(timeout:connectToLastPairedDevice:)``
+> throws ``SmartCoachErrorCode/invalidSessionState`` when a connection attempt is
+> in progress.
 
 ---
 
@@ -194,6 +208,37 @@ do {
 } catch SmartCoachError.failedToStartScanning {
     try? await Task.sleep(for: .seconds(1))
     try? await SmartCoach.startScanning() // Retry
+}
+```
+
+---
+
+### "Invalid session state"
+
+**Error Code**: `4008` (``SmartCoachErrorCode/invalidSessionState``)
+
+**Cause**: The operation isn't valid for the current session state. Typical
+triggers:
+- Calling ``SmartCoach/startScanning(timeout:connectToLastPairedDevice:)`` or
+  ``SmartCoach/connect(to:)`` while a device is already connected or connecting.
+- Calling ``SmartCoach/startMeasuring()`` before the session has reached
+  `.connected` (for example, right after `connect(to:)` returns — the encryption
+  handshake finishes asynchronously).
+
+**Solution**: Check the state first, and drive readiness from the state stream:
+```swift
+// Scanning again? Disconnect first.
+if SmartCoach.currentSessionState().rootState != .disconnected {
+    await SmartCoach.disconnect()
+}
+try await SmartCoach.startScanning()
+
+// Measuring? Wait for .connected on the state stream.
+for await state in try await SmartCoach.sessionStateStream() {
+    if case .connected = state {
+        let stream = try await SmartCoach.startMeasuring()
+        // ...
+    }
 }
 ```
 
@@ -242,13 +287,15 @@ do {
 
 **Error Code**: `4007` (``SmartCoachErrorCode/failedToStartMeasuring``)
 
-**Cause**: Measurement couldn't start - device may not support feature or is in wrong state.
+**Cause**: Measurement couldn't start — the device may not support the feature, or
+sending the start command failed. (Calling it in the wrong session state throws
+``SmartCoachErrorCode/invalidSessionState`` instead — see that entry.)
 
 **Solutions**:
 1. **Verify device is connected**:
 ```swift
 let state = SmartCoach.currentSessionState()
-guard state == .connected else {
+guard state.rootState == .connected else {
     print("Must be connected to measure")
     return
 }

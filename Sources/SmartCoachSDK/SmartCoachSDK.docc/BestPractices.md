@@ -56,7 +56,12 @@ Provide a seamless experience for returning users:
 ```swift
 func connectOnLaunch() async {
     let hasConnectedBefore = UserDefaults.standard.bool(forKey: "hasConnectedBefore")
-    
+
+    // Scanning is only valid while disconnected — it throws
+    // SmartCoachError.invalidSessionState if a device is already
+    // connected or connecting.
+    guard SmartCoach.currentSessionState().rootState == .disconnected else { return }
+
     if hasConnectedBefore {
         do {
             try await SmartCoach.startScanning(connectToLastPairedDevice: true)
@@ -68,6 +73,33 @@ func connectOnLaunch() async {
         showDeviceSelection()
     }
 }
+```
+
+### Wait for `.connected` Before Measuring
+
+Starting a scan or calling ``SmartCoach/connect(to:)`` begins connecting, but the
+device is only ready once the session state reaches `.connected` — the encryption
+handshake finishes asynchronously. Calling ``SmartCoach/startMeasuring()`` earlier
+throws `SmartCoachError.invalidSessionState`. Drive your flow from the state stream:
+
+```swift
+for await state in try await SmartCoach.sessionStateStream() {
+    if case .connected = state {
+        let stream = try await SmartCoach.startMeasuring()
+        // consume measurements...
+    }
+}
+```
+
+### Disconnect Cleanly
+
+``SmartCoach/disconnect()`` never throws — call it with `await`, not `try`. If
+anything goes wrong during disconnect, the error arrives on the session state
+stream as `.disconnected(error)`:
+
+```swift
+await SmartCoach.disconnect()
+// Observe .disconnected(let error) on sessionStateStream() for the outcome.
 ```
 
 ### Handle Unexpected Disconnections
@@ -88,35 +120,45 @@ do {
 
 ### Clean Up Streams Properly
 
-Always cancel measurement tasks when done:
+The measurement stream completes on its own when you call
+``SmartCoach/stopMeasuring()``, call ``SmartCoach/disconnect()``, or the connection
+drops — the `for await` loop ends. Keep the task handle so state changes can end an
+in-flight loop early, and capture `self` weakly so the task can't keep your object
+alive:
 
 ```swift
 @MainActor
 class MeasurementManager: ObservableObject {
     private var measurementTask: Task<Void, Never>?
-    
-    func startMeasuring() async {
-        let stream = try? await SmartCoach.startMeasuring()
-        
-        measurementTask = Task {
-            guard let stream else { return }
-            for await measurement in stream {
-                processMeasurement(measurement)
+
+    func startMeasuring() {
+        // Measuring requires the session to be .connected; otherwise
+        // startMeasuring() throws SmartCoachError.invalidSessionState.
+        guard SmartCoach.currentSessionState().rootState == .connected else { return }
+        measurementTask = Task { [weak self] in
+            do {
+                for await measurement in try await SmartCoach.startMeasuring() {
+                    self?.processMeasurement(measurement)
+                }
+                // Loop ended: measuring stopped or the device disconnected.
+            } catch {
+                self?.handleError(error)
             }
         }
     }
-    
+
     func stopMeasuring() async {
         measurementTask?.cancel()
         measurementTask = nil
-        try? await SmartCoach.stopMeasuring()
-    }
-    
-    deinit {
-        measurementTask?.cancel()
+        try? await SmartCoach.stopMeasuring() // safe no-op if not measuring
     }
 }
 ```
+
+> Important: Do not cancel tasks in `deinit`. On a `@MainActor` type, `deinit` is
+> nonisolated and cannot reference main-actor-isolated properties — it will not
+> compile. Cancel in an explicit teardown method (or a view's `.onDisappear`)
+> instead; the `[weak self]` capture ensures the task never keeps the object alive.
 
 ## Error Handling
 
@@ -151,6 +193,8 @@ func userFriendlyMessage(for error: Error) -> String {
         return "Please enable Bluetooth in Settings to connect to your device."
     case SmartCoachError.noDeviceConnected:
         return "Please connect to a SmartCoach device first."
+    case SmartCoachError.invalidSessionState:
+        return "That action isn't available right now. Disconnect from the current device first."
     case SmartCoachError.featureNotAvailable:
         return "This feature requires a subscription upgrade."
     default:
@@ -181,7 +225,7 @@ struct StatusView: View {
         switch state {
         case .disconnected:
             return Image(systemName: "circle").foregroundColor(.gray)
-        case .scanning, .connecting:
+        case .scanning, .connecting, .reconnecting:
             return ProgressView()
         case .connected:
             return Image(systemName: "checkmark.circle.fill").foregroundColor(.green)
@@ -197,6 +241,7 @@ struct StatusView: View {
         case .connecting: return "Connecting..."
         case .connected: return "Connected"
         case .measuring: return "Measuring"
+        case .reconnecting: return "Reconnecting..."
         }
     }
 }
@@ -265,11 +310,11 @@ struct MeasurementControls: View {
     }
     
     private var canStartMeasuring: Bool {
-        state == .connected
+        state.rootState == .connected
     }
     
     private var canStopMeasuring: Bool {
-        state == .measuring
+        state.rootState == .measuring
     }
 }
 ```
@@ -281,46 +326,67 @@ struct MeasurementControls: View {
 Leverage structured concurrency for clean, efficient code:
 
 ```swift
-// ✅ Good - structured concurrency
+// ✅ Good - drive the flow from the session state stream
 func setupConnection() async throws {
     try await SmartCoach.startScanning()
-    try await SmartCoach.stopScanning()
-    try await SmartCoach.connect(to: device)
-}
 
-// ❌ Bad - callback hell
-func setupConnection(completion: @escaping (Error?) -> Void) {
-    SmartCoach.startScanning { error in
-        guard error == nil else { completion(error); return }
-        SmartCoach.stopScanning { error in
-            guard error == nil else { completion(error); return }
-            // ...
+    for await state in try await SmartCoach.sessionStateStream() {
+        switch state {
+        case let .scanning(devices):
+            // Pick a device (e.g. present the list; here: strongest signal)
+            if let device = devices.first {
+                try await SmartCoach.connect(to: device)
+            }
+        case .connected:
+            // The device is ready only now — connect(to:) returning is not enough,
+            // because the encryption handshake completes asynchronously.
+            return
+        case let .disconnected(error?):
+            throw error
+        default:
+            break
         }
     }
+}
+
+// ❌ Bad - assuming connect(to:) returning means the device is ready
+func setupConnection() async throws {
+    try await SmartCoach.startScanning()
+    try await SmartCoach.connect(to: device)
+    _ = try await SmartCoach.startMeasuring() // throws invalidSessionState —
+                                              // the session isn't .connected yet
 }
 ```
 
 ### Cancel Unused Tasks
 
-Clean up tasks that are no longer needed:
+The session state stream from ``SmartCoach/sessionStateStream()`` never ends on its
+own, so a task observing it must be cancelled explicitly. The simplest approach is
+structured concurrency — drive the observation from a SwiftUI `.task` modifier, which
+cancels automatically when the view disappears:
 
 ```swift
+.task { await viewModel.startMonitoring() } // cancelled on disappear — no cleanup code
+```
+
+If you store the task yourself, cancel it in an explicit teardown method — never in
+`deinit` (on a `@MainActor` type, `deinit` is nonisolated and cannot reference the
+isolated property; it will not compile):
+
+```swift
+@MainActor
 class ViewModel: ObservableObject {
     private var observationTask: Task<Void, Never>?
     
     func startObserving() {
-        observationTask = Task {
-            // ... observation code
+        observationTask = Task { [weak self] in
+            // ... observe sessionStateStream() ...
         }
     }
     
-    func stopObserving() {
+    func stopObserving() { // call from .onDisappear or your teardown path
         observationTask?.cancel()
         observationTask = nil
-    }
-    
-    deinit {
-        observationTask?.cancel()
     }
 }
 ```

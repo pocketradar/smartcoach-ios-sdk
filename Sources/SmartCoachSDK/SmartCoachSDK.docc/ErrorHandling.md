@@ -59,8 +59,10 @@ Errors related to feature permissions and subscriptions.
 
 ```swift
 do {
+    // Requires the session to be .connected — otherwise startMeasuring()
+    // throws SmartCoachError.invalidSessionState instead
     let stream = try await SmartCoach.startMeasuring()
-    // Process stream...
+    // Process stream... (it completes when measuring stops or the device disconnects)
 } catch let error as SmartCoachError {
     switch error {
     case SmartCoachError.featureNotAvailable:
@@ -71,6 +73,10 @@ do {
         // Entitlements expired or invalid
         // May need network to refresh
         await refreshEntitlements()
+        
+    case SmartCoachError.invalidSessionState:
+        // Not connected yet — wait for .connected on sessionStateStream()
+        print("Connect to a device before measuring")
         
     default:
         print("Error: \(error.localizedDescription)")
@@ -115,6 +121,11 @@ do {
         // Measurement failed to start
         print("Couldn't start measuring")
         
+    case SmartCoachError.invalidSessionState:
+        // Operation not valid right now — e.g. scanning while already
+        // connected/connecting, or measuring before the session is .connected
+        print("Disconnect first, or wait for the session to be ready")
+        
     default:
         print("Device error: \(error.localizedDescription)")
     }
@@ -132,6 +143,8 @@ do {
     print("Please enable Bluetooth")
 } catch SmartCoachError.failedToConnect {
     print("Connection failed - retry?")
+} catch SmartCoachError.invalidSessionState {
+    print("Already connected or connecting — disconnect first")
 } catch SmartCoachError.notConfigured {
     print("SDK not configured")
 } catch {
@@ -157,6 +170,7 @@ do {
 | 4005 | `featureNotSupported` | Device | Feature not supported |
 | 4006 | `failedToStartScanning` | Device | Scanning failed |
 | 4007 | `failedToStartMeasuring` | Device | Measuring failed |
+| 4008 | `invalidSessionState` | Device | Operation invalid for the current session state |
 | -9999 | `unknownInternalError` | Internal | Unknown error |
 
 ## Best Practices
@@ -260,9 +274,11 @@ class DeviceManager: ObservableObject {
             // Configure SDK
             try SmartCoach.configure()
             
-            // Start state monitoring
-            let stream = try await SmartCoach.startScanning(connectToLastPairedDevice: true)
+            // Begin scanning (devices and connection results arrive on the
+            // session state stream, not as a return value)
+            try await SmartCoach.startScanning(connectToLastPairedDevice: true)
 
+            let stream = try await SmartCoach.sessionStateStream()
             await processStateChanges(stream)
             
         } catch let error as SmartCoachError {
@@ -289,8 +305,11 @@ class DeviceManager: ObservableObject {
             errorMessage = "Couldn't connect to device. Please try again."
             
         case SmartCoachError.unexpectedDisconnect:
+            // With autoReconnect enabled at configure time, the SDK reconnects
+            // by itself and surfaces .reconnecting(device) on the state stream —
+            // do NOT also start scanning manually (it can throw
+            // invalidSessionState and fight the SDK's own reconnect).
             errorMessage = "Lost connection to device. Reconnecting..."
-            Task { await attemptReconnect() }
             return // Don't show error for auto-reconnect
             
         // Entitlements
@@ -313,11 +332,17 @@ class DeviceManager: ObservableObject {
         isShowingError = true
     }
     
+    /// Manual reconnect — only needed when autoReconnect is DISABLED.
+    /// Guard on the session state: scanning while the SDK is already
+    /// connected/connecting throws invalidSessionState.
     private func attemptReconnect() async {
+        guard SmartCoach.currentSessionState().rootState == .disconnected else { return }
         do {
             try await SmartCoach.startScanning(connectToLastPairedDevice: true)
+        } catch let error as SmartCoachError {
+            handleSmartCoachError(error)
         } catch {
-            handleSmartCoachError(error as! SmartCoachError)
+            handleUnexpectedError(error)
         }
     }
 }

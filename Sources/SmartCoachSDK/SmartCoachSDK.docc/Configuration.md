@@ -49,7 +49,7 @@ do {
 
 The `autoReconnect` option determines whether the SDK automatically attempts to reconnect to a previously paired device when the connection is lost:
 
-- **`false` (default)**: The SDK will not automatically reconnect. You must manually call ``SmartCoach/startScanning(connectToLastPairedDevice:)`` to reconnect.
+- **`false` (default)**: The SDK will not automatically reconnect. You must manually call ``SmartCoach/startScanning(timeout:connectToLastPairedDevice:)`` to reconnect.
 - **`true`**: The SDK attempts to reconnect automatically when a connection is unexpectedly lost.
 
 **When to use auto-reconnect:**
@@ -72,7 +72,7 @@ The SDK requires specific keys in your `Info.plist`:
 <string>YOUR_API_KEY_HERE</string>
 ```
 
-Get your API key by contacting [Customer Support](mailto:info@pocketradar.com).
+Get your API key by contacting [Customer Support](mailto:info@pocketradar.com). The key is a UUID string (`8-4-4-4-12` hex) — any other format fails configuration with `SmartCoachError.missingApiKey`.
 
 ### 2. Bluetooth Permissions (Required)
 
