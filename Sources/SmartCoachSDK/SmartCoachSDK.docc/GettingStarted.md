@@ -9,17 +9,16 @@ This guide walks you through the initial setup, from adding the SDK to your proj
 ## Prerequisites
 
 - iOS 18.0 or later
-- Xcode 15.0 or later
-- Swift 5.9 or later
+- Xcode 26.0 or later (the package manifest uses Swift tools 6.2)
 - Bluetooth permissions configured in your app
 
 ## Installation
 
-### 1. Add the Framework to Your Project
+### 1. Add the Package to Your Project
 
-1. Drag the `SmartCoachSDK.xcframework` into your Xcode project
-2. In your target's **General** settings, ensure the framework is listed under **Frameworks, Libraries, and Embedded Content**
-3. Set the framework to **Embed & Sign**
+1. In Xcode, choose **File → Add Package Dependencies…**
+2. Enter `https://github.com/pocketradar/smartcoach-ios-sdk` and select the version you were given
+3. Add the `SmartCoachSDK` library to your app target
 
 ### 2. Configure Info.plist
 

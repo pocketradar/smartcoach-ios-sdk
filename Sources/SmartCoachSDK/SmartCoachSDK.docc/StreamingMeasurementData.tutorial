@@ -66,8 +66,11 @@
 
             Measuring requires an established connection: the session must have reached the
             `.connected` state on ``SmartCoach/sessionStateStream()`` (see
-            <doc:ConnectingYourFirstDevice>). Calling ``SmartCoach/startMeasuring()`` in any
-            other state throws `SmartCoachError.invalidSessionState`.
+            <doc:ConnectingYourFirstDevice>). Calling ``SmartCoach/startMeasuring()`` while
+            `.connecting`, `.scanning`, or `.disconnected` throws
+            `SmartCoachError.invalidSessionState`. It is also valid from `.measuring` — the
+            radar can start measuring from its own trigger, and calling `startMeasuring()`
+            then simply returns a stream of those readings.
         }
 
         @Steps {
@@ -78,8 +81,10 @@
                 @Code(name: "MeasurementView.swift", file: tutorial-02-03.swift) {
                 ```swift
                 func startMeasuring() async {
-                    // The session must be .connected — not merely "connect was called."
-                    guard SmartCoach.currentSessionState().rootState == .connected else {
+                    // The session must be .connected (or already .measuring) — not merely
+                    // "connect was called."
+                    let root = SmartCoach.currentSessionState().rootState
+                    guard root == .connected || root == .measuring else {
                         statusMessage = "Connect to a device first"
                         return
                     }
@@ -156,8 +161,10 @@
             Build a user interface to visualize the real-time measurement data.
 
             Each ``MeasurementData`` carries the speed as a `Measurement<UnitSpeed>` (easily
-            converted between mph, km/h, and m/s) plus the optional MAC address of the device
-            that produced it.
+            converted between mph, km/h, and m/s), the optional MAC address of the device
+            that produced it, and — on SmartCoach 2 radars whose firmware reports them — the
+            ``MeasurementData/direction`` of travel, the ``MeasurementData/velocityType``
+            (pitch, exit velocity, …), and the radar's ``MeasurementData/tilt``.
         }
 
         @Steps {
@@ -392,7 +399,8 @@
 
             @Step {
                 Watch the measurement list update as new data arrives — and note that if the
-                device disconnects, the stream completes and the UI resets on its own.
+                device disconnects, or the radar is stopped from its own trigger, the stream
+                completes and the UI resets on its own.
 
                 Congratulations! You've successfully built a real-time measurement display. You can now process and visualize SmartCoach device data in your app.
             }

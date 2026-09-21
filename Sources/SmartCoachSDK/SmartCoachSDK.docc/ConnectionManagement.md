@@ -70,6 +70,13 @@ class ConnectionViewModel {
 }
 ```
 
+### Automatic connect retry
+
+A pairing-mode radar sometimes refuses the very first Bluetooth connection attempt. The
+SDK retries the BLE link once, 0.2 s later, inside ``SmartCoach/connect(to:)`` before
+reporting `failedToConnect`. You do not need your own immediate retry; the retry loops
+shown below are for the case where that single retry also fails.
+
 ### Quick Reconnect
 
 For returning users, provide instant reconnection:
