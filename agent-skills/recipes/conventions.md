@@ -68,6 +68,10 @@ These hold no matter how the app is structured:
   property updates in `MainActor.run` from an already-main-actor context.
 - **Results arrive via the state stream, not return values.** Actions start work; the
   outcome shows up as a later `SmartCoachSessionState`.
+- **The session follows the radar.** The radar can start or stop measuring on its own
+  (its trigger); the session then moves between `.connected` and `.measuring` without
+  any app call, and a measurement stream in progress completes when the radar stops.
+  Handle `.measuring` in the switch even if the app never calls `startMeasuring()`.
 - **Never terminate the observation on a state-carried error.** `.disconnected(error)`
   is data — surface the error and keep observing. Throwing/returning out of the loop
   permanently blinds the app to later states.

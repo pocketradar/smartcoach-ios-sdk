@@ -157,6 +157,10 @@ class ScanningViewModel {
 
 Devices are discovered, connected, and measured through the **session state stream** — SDK calls start work, and results arrive as states. See the bundled DocC tutorials for connecting and streaming measurements.
 
+## What's New
+
+See [CHANGELOG.md](CHANGELOG.md) for behaviour changes and additions in each release.
+
 ## Documentation
 
 The SDK includes comprehensive DocC documentation bundled directly in the package. Once added to your project, documentation is available in Xcode's Documentation Browser.

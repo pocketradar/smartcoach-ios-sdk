@@ -16,8 +16,26 @@ The SDK uses ``SmartCoachSessionState`` to represent different stages of operati
 | `scanning` | Actively scanning for devices (carries the discovered devices) |
 | `connecting` | Attempting to connect to a device |
 | `connected` | Device is connected and ready |
-| `measuring` | Actively receiving measurement data |
+| `measuring` | The radar is measuring — started by ``SmartCoach/startMeasuring()`` **or from the radar itself** |
 | `reconnecting` | Auto-reconnect is re-establishing a lost connection |
+
+## The Session Follows the Radar
+
+The session state describes the radar, not only what your app asked for. If the user
+starts measuring from the radar's own trigger, the session moves from `.connected` to
+`.measuring` without any call from your app; when the radar stops, it moves back to
+`.connected` and any measurement stream in progress completes. Your app should react to
+these transitions the same way it reacts to its own ``SmartCoach/startMeasuring()`` and
+``SmartCoach/stopMeasuring()`` calls.
+
+To receive the readings of a measurement the radar started, call
+``SmartCoach/startMeasuring()`` from the `.measuring` state: it sends nothing to the
+radar and simply returns a stream.
+
+The device carried by `.connected` and `.measuring` also exposes
+``SmartCoachRadar/measurementState`` — the radar's own report (`.unknown`, `.idle`,
+`.measuring`). It normally agrees with the session state; it is there when you want the
+device's report directly.
 
 ## Observing State Changes
 
@@ -184,7 +202,8 @@ class SmartCoachOperations {
     // These mirror the SDK's own preconditions: operations called from the
     // wrong state throw SmartCoachError.invalidSessionState.
     func canStartMeasuring() -> Bool {
-        SmartCoach.currentSessionState().rootState == .connected
+        let root = SmartCoach.currentSessionState().rootState
+        return root == .connected || root == .measuring
     }
     
     func canConnect() -> Bool {
@@ -217,9 +236,9 @@ connecting
     ↓ [handshake completes — asynchronous; connect(to:) returning
        does not mean connected yet]
 connected
-    ↓ startMeasuring()         — only valid from connected
-measuring
-    ↓ stopMeasuring()
+    ↓ startMeasuring()         — or the radar starts measuring on its own
+measuring                        (startMeasuring() from here just returns a stream)
+    ↓ stopMeasuring()          — or the radar stops on its own; measurement streams complete
 connected
     ↓ disconnect()
 disconnected

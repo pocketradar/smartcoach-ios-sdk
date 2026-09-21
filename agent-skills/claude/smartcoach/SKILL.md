@@ -4,7 +4,8 @@ description: >-
   Integrate the PocketRadar SmartCoach iOS SDK into a Swift/SwiftUI app. Use whenever
   the user asks to set up or configure the SmartCoach SDK (API key, Bluetooth
   permission, configure() at launch) or to add SmartCoach device scanning, connecting,
-  measurement streaming, or session-state handling — whether editing an existing view
+  measurement streaming, radar settings (units, speed range, sensitivity), or
+  session-state handling — whether editing an existing view
   model or scaffolding a new MVVM screen. Ensures the generated code follows the SDK's
   required call sequences and lifecycle instead of improvising the API.
 ---
@@ -43,6 +44,7 @@ paste the view-model code into an app that isn't MVVM.
    - **Device scanning** → `recipes/scan.md`
    - **Connect / disconnect** → `recipes/connect.md`
    - **Stream measurements** → `recipes/measure.md`
+   - **Radar settings** (units, speed range, sensitivity) → `recipes/settings.md`
 3. For a request spanning capabilities ("connect and measure", "a full scan→connect→
    measure screen"), apply the recipes in order into **one** view model — they share a
    single `startMonitoring()` switch by design (see each recipe's "Composability").
@@ -66,6 +68,8 @@ prior attempt must be adopted/refactored/reconciled, never duplicated alongside)
 - Every `SmartCoach` call is `@MainActor` and mostly `async` — the view model must be
   `@MainActor`. Never wrap property updates in `MainActor.run` inside it.
 - Results arrive through `SmartCoach.sessionStateStream()`, not as return values.
+- The session follows the radar: `.measuring` can appear without the app calling
+  `startMeasuring()` (the radar's own trigger). Handle it; never treat it as an error.
 - Session monitoring is one async `startMonitoring()` method driven by the owning
   view's `.task` modifier (structured cancellation — no stored task, no manual
   teardown). Only if the view model owns its lifecycle do you store the task, and then
