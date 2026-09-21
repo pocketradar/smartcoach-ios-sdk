@@ -242,6 +242,28 @@ for await state in try await SmartCoach.sessionStateStream() {
 }
 ```
 
+### "The radar rejected the command or did not acknowledge it"
+
+**Error Code**: `4009` (``SmartCoachErrorCode/commandFailed``)
+
+**Cause**: A settings call — ``SmartCoach/setMeasurementUnit(_:)``,
+``SmartCoach/setSpeedRange(_:)``, or ``SmartCoach/setSensitivity(_:)`` — was rejected by
+the radar or not acknowledged within a few seconds.
+
+**Solution**: The connection is unaffected. Retry once; if it persists, check the radar
+is awake and in range. Validate values with the failable initializers
+(``RadarSpeedRange/init(lowMPH:highMPH:)``, ``RadarSensitivity/init(level:)``) so an
+out-of-range value never reaches the radar:
+
+```swift
+guard let range = RadarSpeedRange(lowMPH: 40, highMPH: 100) else { return }
+do {
+    try await SmartCoach.setSpeedRange(range)
+} catch SmartCoachError.commandFailed {
+    showRetryPrompt()
+}
+```
+
 ## Entitlement Errors
 
 ### "Feature not available"
@@ -359,7 +381,6 @@ for await state in stream {
 Ensure all required Info.plist entries are present:
 - `SmartCoachAPIKey`
 - `NSBluetoothAlwaysUsageDescription`
-- `NSBluetoothPeripheralUsageDescription`
 - Correct Bundle Identifier
 
 ## Getting Help

@@ -17,6 +17,7 @@ SmartCoachSDK provides a simple yet powerful interface to connect, communicate, 
 - **Real-Time Measurements**: Stream measurement data using modern Swift concurrency
 - **State Management**: Reactive session state tracking with AsyncStream
 - **Auto-Reconnect**: Optional automatic reconnection to previously paired devices and unintended disconnects
+- **Device Settings**: Change the radar's units, speed range, and sensitivity with confirmed results
 - **Comprehensive Error Handling**: Detailed error codes for every scenario
 
 ## Topics
@@ -38,11 +39,22 @@ SmartCoachSDK provides a simple yet powerful interface to connect, communicate, 
 - ``SmartCoachDeviceConfigurationOptions``
 - ``SmartCoachSessionState``
 - ``MeasurementData``
+- ``RadarDirection``
+- ``RadarVelocityType``
+- ``RadarTilt``
+
+### Device Settings
+
+- <doc:DeviceSettings>
+- ``RadarSpeedRange``
+- ``RadarSensitivity``
+- ``RadarMeasurementUnit``
 
 ### Device Management
 
 - ``SmartCoachRadar``
 - ``AnySmartCoachRadar``
+- ``RadarMeasurementState``
 - <doc:DeviceDiscovery>
 - <doc:ConnectionManagement>
 

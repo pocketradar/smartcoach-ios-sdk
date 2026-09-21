@@ -17,7 +17,8 @@ of the contract, however the switch/reducer is expressed.
 ## Prerequisites
 
 - The `SmartCoachSDK` package is added and `SmartCoach.configure()` is called at launch.
-- A `.connected` device (see `connect.md`). Measuring from any other state throws
+- A `.connected` or `.measuring` device (see `connect.md`). Measuring from any other
+  state (`.connecting`, `.reconnecting`, `.scanning`, `.disconnected`) throws
   `SmartCoachError.invalidSessionState`.
 
 ## Adds
@@ -25,7 +26,7 @@ of the contract, however the switch/reducer is expressed.
 **Properties**
 
 ```swift
-var speeds: [Measurement<UnitSpeed>] = []
+var speeds: [MeasurementData] = []          // .measurement, .macAddress, .direction, .velocityType, .tilt
 private var speedsTask: Task<Void, Never>?
 ```
 
@@ -40,6 +41,9 @@ non-measuring branches DO cancel it:
 ```swift
 case .measuring:
     availableDevices.removeAll()      // keep the speeds task running
+    if speedsTask == nil {            // the radar started on its own — subscribe to its readings
+        startMeasuring()
+    }
 ```
 
 Then add `cancelSpeedsTask()` to the sibling branches that end measurement —
@@ -62,16 +66,19 @@ default:
 
 ```swift
 func startMeasuring() {
-    // Measuring is only valid from .connected — the SDK enforces this
-    // (SmartCoachError.invalidSessionState); the guard keeps the UI honest.
-    guard sessionState.rootState == .connected else { return }
+    // Valid from .connected (starts the radar) or .measuring (radar already running —
+    // returns a stream without sending a command). Anything else throws
+    // SmartCoachError.invalidSessionState; the guard keeps the UI honest.
+    guard speedsTask == nil,
+          sessionState.rootState == .connected || sessionState.rootState == .measuring
+    else { return }
     speeds.removeAll()
     speedsTask = Task { [weak self] in
         do {
-            // The stream completes when measuring stops, the device disconnects,
-            // or the connection is lost — the loop ends on its own.
-            for await speed in try await SmartCoach.startMeasuring() {
-                self?.speeds.insert(speed.measurement, at: 0)
+            // The stream completes when measuring stops (by the app or by the radar),
+            // the device disconnects, or the connection is lost — the loop ends on its own.
+            for await reading in try await SmartCoach.startMeasuring() {
+                self?.speeds.insert(reading, at: 0)
             }
         } catch {
             self?.errorMessage = "Failed to start measuring: \(error.localizedDescription)"
@@ -102,12 +109,16 @@ private func cancelSpeedsTask() {
 
 ## Rules specific to measuring
 
-- **`startMeasuring()` requires `.connected`.** Not `.connecting`, not "right after
-  `connect(to:)` returned." The SDK throws `invalidSessionState` otherwise.
-- **The measurement stream self-completes** on `stopMeasuring()`, `disconnect()`, or a
-  dropped connection — the `for await` loop ends without you cancelling it. The stored
-  `speedsTask` + `cancelSpeedsTask()` handle the cases where *state changes out from
-  under* an active measurement.
+- **`startMeasuring()` requires `.connected` or `.measuring`.** Not `.connecting`, not
+  "right after `connect(to:)` returned." The SDK throws `invalidSessionState` otherwise.
+  From `.measuring` it is idempotent: no command is sent, you just get a stream.
+- **The radar can start measuring by itself** (its trigger). The session becomes
+  `.measuring` without an app call — that is why the `.measuring` case subscribes when
+  no speeds task exists yet. Never treat an unexpected `.measuring` as an error.
+- **The measurement stream self-completes** on `stopMeasuring()`, `disconnect()`, the
+  radar stopping on its own, or a dropped connection — the `for await` loop ends without
+  you cancelling it. The stored `speedsTask` + `cancelSpeedsTask()` handle the cases
+  where *state changes out from under* an active measurement.
 - **`[weak self]` in the task is required.** It prevents the task from retaining the
   view model, and it is why no `deinit` cleanup is needed (nor possible on a
   `@MainActor` type).
@@ -140,7 +151,11 @@ Button("Start Measuring") { viewModel.startMeasuring() }
 
 // when measuring:
 Button("Stop Measuring") { viewModel.stopMeasuring() }
-ForEach(Array(viewModel.speeds.prefix(10).enumerated()), id: \.offset) { _, speed in
-    Text(formatter.string(from: speed)).font(.system(.body, design: .monospaced))
+ForEach(Array(viewModel.speeds.prefix(10).enumerated()), id: \.offset) { _, reading in
+    HStack {
+        Text(formatter.string(from: reading.measurement)).font(.system(.body, design: .monospaced))
+        Spacer()
+        Text("\(reading.direction) · \(reading.velocityType)").font(.caption).foregroundStyle(.secondary)
+    }
 }
 ```

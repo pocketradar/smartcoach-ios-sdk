@@ -15,6 +15,7 @@ agent-skills/
     scan.md         Device discovery.
     connect.md      Connect / disconnect.
     measure.md      Live measurement streaming.
+    settings.md     Radar settings: units, speed range, sensitivity.
   claude/
     smartcoach/     Claude adapter (SKILL.md) that points at the recipes.
   install.sh        Assembles a self-contained skill into your agent's skills folder.

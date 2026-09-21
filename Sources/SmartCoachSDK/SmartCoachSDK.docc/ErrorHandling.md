@@ -125,6 +125,11 @@ do {
         // Operation not valid right now — e.g. scanning while already
         // connected/connecting, or measuring before the session is .connected
         print("Disconnect first, or wait for the session to be ready")
+
+    case SmartCoachError.commandFailed:
+        // A settings change (units, speed range, sensitivity) was rejected or
+        // not acknowledged by the radar. The connection is unaffected — retry.
+        print("The radar did not accept the setting")
         
     default:
         print("Device error: \(error.localizedDescription)")
@@ -171,6 +176,7 @@ do {
 | 4006 | `failedToStartScanning` | Device | Scanning failed |
 | 4007 | `failedToStartMeasuring` | Device | Measuring failed |
 | 4008 | `invalidSessionState` | Device | Operation invalid for the current session state |
+| 4009 | `commandFailed` | Device | A settings command was rejected by the radar or not acknowledged |
 | -9999 | `unknownInternalError` | Internal | Unknown error |
 
 ## Best Practices
